@@ -4,10 +4,10 @@ from math import cos, sin, atan2
 from typing import List
 
 import numpy as np
-from geometry_msgs import Vector3, Quaternion
+from geometry_msgs.msg import Vector3, Quaternion
 from numpy.linalg import norm
 
-from .estimator_header import Quat
+from estimator_header import Quat
 
 doPrint = True
 
@@ -111,7 +111,7 @@ def qMean(qList, weights):
 
 
 @qMean.register
-def _(qList: List[Quat], weights: np.ndarray) -> Quat:
+def _(qList: list, weights: np.ndarray) -> Quat:
     n = weights.shape[0]
     mu: Quat = qList[0]
     error = np.empty([3, n])

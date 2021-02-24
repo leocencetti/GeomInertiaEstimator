@@ -58,20 +58,20 @@ multirotor:
         kf: 4.179e-9 # rotor thrust coefficient - Unit: [N/rpm^2]
         km: 3.97005e-11 # rotor drag moment coefficient - positive if counter-clockwise, negative if clockwise
         R: [ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] # rotor attitude - row major matrix
-        t: [ 0.071, 0.08, 0.0] # rotor position
+        t: [ 0.13, 0.22, 0.0] # rotor position
     rotor2:
         kf: 4.179e-9
         km: -3.97005e-11
         R: [ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-        t: [ -0.071, 0.08, 0.0]
+        t: [ -0.13, 0.22, 0.0]
     rotor3:
         kf: 4.179e-9
         km: 3.97005e-11
         R: [ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-        t: [ -0.071, -0.08, 0.0]
+        t: [ -0.13, -0.22, 0.0]
     rotor4:
         kf: 4.179e-9
         km: -3.97005e-11
         R: [ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-        t: [ 0.071, -0.08, 0.0]
+        t: [ 0.13, -0.22, 0.0]
 

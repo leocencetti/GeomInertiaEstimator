@@ -2,16 +2,17 @@
     <arg name="use_EKF" default="0"/>
     <arg name="model" default="quadrotor"/>
 
-    <group ns="$(arg model)">
-        <node pkg="geom_inertia_estimator"
-            type="geom_inertia_estimator"
-            name="geom_inertia_estimator"
-            output="screen">
-            <rosparam file="$(find geom_inertia_estimator)/config/quad_params.yaml"/>
-            <param name="useEKF" value="$(arg use_EKF)"/>
-            <remap from="~pose" to="pose"/>
-            <remap from="~imu"  to="imu"/>
-            <remap from="~rpm"  to="rpm"/>
-        </node>
-    </group>
+    <rosparam file="$(find geom_inertia_estimator)/config/quad_params.yaml"/>
+<!--    <group ns="$(arg model)">-->
+<!--        <node pkg="geom_inertia_estimator"-->
+<!--            type="geom_inertia_estimator_node.py"-->
+<!--            name="geom_inertia_estimator_node"-->
+<!--            output="screen">-->
+<!--            <rosparam file="$(find geom_inertia_estimator)/config/quad_params.yaml"/>-->
+<!--            <param name="useEKF" value="$(arg use_EKF)"/>-->
+<!--&lt;!&ndash;            <remap from="~pose" to="pose"/>&ndash;&gt;-->
+<!--&lt;!&ndash;            <remap from="~imu"  to="imu"/>&ndash;&gt;-->
+<!--&lt;!&ndash;            <remap from="~rpm"  to="rpm"/>&ndash;&gt;-->
+<!--        </node>-->
+<!--    </group>-->
 </launch>

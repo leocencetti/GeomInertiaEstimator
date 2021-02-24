@@ -1,21 +1,19 @@
 ##########  MAIN FUNCTIONS  ##########
 import logging
-from math import sqrt
 from queue import Queue
 
-import rospy
-from geom_inertia_estimator import MotorRPM
-from geom_inertia_estimator import ParameterEstimates
-from geometry_msgs import PoseWithCovarianceStamped
+from geom_inertia_estimator.msg import MotorRPM
+from geom_inertia_estimator.msg import ParameterEstimates
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from numpy.linalg import cholesky
 from scipy.linalg import block_diag, inv
-from sensor_msgs import Imu
+from sensor_msgs.msg import Imu
 
-from .calc_EKF_F_optimized import calc_EKF_F_optimized
-from .calc_EKF_H_imu_optimized_simple import calc_EKF_H_imu_optimized_simple
-from .calc_EKF_H_odom_optimized_simple import calc_EKF_H_odom_optimized_simple
-from .estimator_header import *
-from .tools import *
+from calc_EKF_F_optimized import calc_EKF_F_optimized
+from calc_EKF_H_imu_optimized_simple import calc_EKF_H_imu_optimized_simple
+from calc_EKF_H_odom_optimized_simple import calc_EKF_H_odom_optimized_simple
+from estimator_header import *
+from tools import *
 
 
 # estimator class
@@ -43,7 +41,7 @@ class InertiaEstimator:
         self._initialized: bool = False
         self._useEKF: bool = True
 
-    def onInit(self, nh):
+    def onInit(self):
         # initialize often used variables as consts
         self._consts.zero3 = np.zeros((3, 3))
         self._consts.eye3 = np.eye(3)
@@ -73,20 +71,20 @@ class InertiaEstimator:
         temp6[3] = rospy.get_param("RImu/Omega/x", 1)
         temp6[4] = rospy.get_param("RImu/Omega/y", 1)
         temp6[5] = rospy.get_param("RImu/Omega/z", 1)
-        self._consts.RImu = np.diag(temp6)
+        self._consts.RImu = np.diag(temp6.squeeze())
 
         # read process covariance
-        Qx_temp = rospy.get_param("Qx", np.empty(NUM_STATES_TANGENT))
-        self._consts.Qx = np.diag(Qx_temp)
+        Qx_temp = np.fromiter(rospy.get_param("Qx", np.empty(NUM_STATES_TANGENT)), dtype=float)
+        self._consts.Qx = np.diag(Qx_temp.squeeze())
 
         # read initial values
         # moment of inertia
         temp3[0] = rospy.get_param("x0/I/x", 1e-3)
         temp3[1] = rospy.get_param("x0/I/y", 1e-3)
         temp3[2] = rospy.get_param("x0/I/z", 1e-3)
-        self._init_vars.I_tensor = np.diag(temp3)
+        self._init_vars.I_tensor = np.diag(temp3.squeeze())
         # mass
-        rospy.get_param("x0/m", self._init_vars.m, 0.5)
+        self._init_vars.m = rospy.get_param("x0/m", 0.5)
         # position center of mass
         temp3[0] = rospy.get_param("x0/r_BM/x", 0)
         temp3[1] = rospy.get_param("x0/r_BM/y", 0)
@@ -132,7 +130,7 @@ class InertiaEstimator:
         temp30[27] = rospy.get_param("P0/b_Omega/x", 1)
         temp30[28] = rospy.get_param("P0/b_Omega/y", 1)
         temp30[29] = rospy.get_param("P0/b_Omega/z", 1)
-        self._init_vars.P0 = np.diag(temp30)
+        self._init_vars.P0 = np.diag(temp30.squeeze())
 
         # read UKF tuning parameters
         temp = rospy.get_param("UKF/alpha", 0.4)
@@ -144,11 +142,11 @@ class InertiaEstimator:
 
         # read attitude of pose sensor and IMU
         R_temp = rospy.get_param("R_BP", np.empty((9, 1)))
-        self._consts.R_BP = R_temp.reshape((3, 3))
+        self._consts.R_BP = np.fromiter(R_temp, dtype=float).reshape((3, 3))
         self._consts.R_BP_6D = block_diag(self._consts.R_BP, self._consts.R_BP)
         self._consts.q_RB = Quat(self._consts.R_BP).normalized()
         R_temp = rospy.get_param("R_BI", np.empty((9, 1)))
-        self._consts.R_BI = R_temp.reshape((3, 3))
+        self._consts.R_BI = np.fromiter(R_temp, dtype=float).reshape((3, 3))
         temp66 = block_diag(self._consts.R_BI, self._consts.R_BI)
         self._consts.RImu = temp66 @ self._consts.RImu @ temp66.T
 
@@ -156,26 +154,26 @@ class InertiaEstimator:
         P_f = np.empty((3, 20))
         P_M = np.empty((3, 20))
         num_rotors = 0
-        for num_rotors in range(20):
+        for num_rotors in range(4):
             # read thrust coeff, drag moment coeff, attitude and position of rotors
             k_f = rospy.get_param("multirotor/rotor" + str(num_rotors + 1) + "/kf", 5.0e-9)
             k_M = rospy.get_param("multirotor/rotor" + str(num_rotors + 1) + "/km", 4.0e-11)
-            R_temp = rospy.get_param("multirotor/rotor" + str(num_rotors + 1) + "/R", np.empty((9, 1)))
-            t_temp = rospy.get_param("multirotor/rotor" + str(num_rotors + 1) + "/t", np.empty((3, 1)))
+            R_temp = np.fromiter(rospy.get_param("multirotor/rotor" + str(num_rotors + 1) + "/R", np.empty((9, 1))), dtype=float)
+            t_temp = np.fromiter(rospy.get_param("multirotor/rotor" + str(num_rotors + 1) + "/t", np.empty((3, 1))), dtype=float)
             R = R_temp.reshape((3, 3))
             t = t_temp
 
-            Qx_temp = rospy.get_param("Qx", np.empty(NUM_STATES_TANGENT))
-            self._consts.Qx = np.diag(Qx_temp)
+            Qx_temp = np.fromiter(rospy.get_param("Qx", np.empty(NUM_STATES_TANGENT)), dtype=float)
+            self._consts.Qx = np.diag(Qx_temp.squeeze())
 
-            if R.norm() == 3:  # not defined rotor
+            if norm(R) == 3:  # not defined rotor
                 break
             else:
                 # TODO save individual kf/km for each rotor
                 self._consts.k_f = k_f
                 self._consts.k_M = k_M
                 P_f[:, num_rotors] = self._consts.k_f * R @ self._consts.e_z
-                P_M[:, num_rotors] = self._consts.k_M * R @ self._consts.e_z + t.cross(
+                P_M[:, num_rotors] = self._consts.k_M * R @ self._consts.e_z + np.cross(t,
                     self._consts.k_f * R @ self._consts.e_z)
         self._consts.P_f = P_f[:3, :num_rotors]
         self._consts.P_M = P_M[:3, :num_rotors]
@@ -185,12 +183,12 @@ class InertiaEstimator:
         self._consts.lambd = self._consts.alpha * self._consts.alpha * (
                 NUM_STATES_TANGENT + self._consts.kappa) - NUM_STATES_TANGENT
         self._consts.Wm = np.concatenate([
-            self._consts.lambd / (NUM_STATES_TANGENT + self._consts.lambd),
+            np.ones([1, 1]) * self._consts.lambd / (NUM_STATES_TANGENT + self._consts.lambd),
             np.ones((2 * NUM_STATES_TANGENT, 1)) * (1 / (2 * (NUM_STATES_TANGENT + self._consts.lambd)))
         ], axis=0)
         self._consts.Wc = np.concatenate([
-            self._consts.lambd / (NUM_STATES_TANGENT + self._consts.lambd) + (
-                    1 - self._consts.alpha * self._consts.alpha + self._consts.beta),
+            np.ones([1, 1]) * (self._consts.lambd / (NUM_STATES_TANGENT + self._consts.lambd) + (
+                    1 - self._consts.alpha * self._consts.alpha + self._consts.beta)),
             np.ones((2 * NUM_STATES_TANGENT, 1)) * (1 / (2 * (NUM_STATES_TANGENT + self._consts.lambd)))
         ], axis=0)
 
@@ -215,10 +213,12 @@ class InertiaEstimator:
 
         self._init_vars = InitVars()
         self._initialized = True
+        self._init_vars.poseInitialized = self._init_vars.imuInitialized = self._init_vars.rpmInitialized = True
 
         self.publishEstimates(self._state)
 
         self.logger.info("filter initialized")
+        print('Initialized')
 
     def resetFilter(self):
         self._init_vars = InitVars()
@@ -276,7 +276,7 @@ class InertiaEstimator:
             for i in range(NUM_SIGMAS):
                 diff[:, i] = sigmaPoints[i].boxminus(state.X)
 
-            state.P = diff @ np.diag(self._consts.Wc) @ diff.T + self._consts.Qx * dt
+            state.P = diff @ np.diag(self._consts.Wc.squeeze()) @ diff.T + self._consts.Qx * dt
 
             # update time stamp and
             state.t = input.t
@@ -287,8 +287,7 @@ class InertiaEstimator:
         H = np.zeros((3, NUM_STATES_TANGENT))
         H[:3, :3] = np.eye(3)
         # innovation
-        Xhat = np.empty((3, 1))
-        Xhat = qBoxMinus(meas.q, state.X.q)
+        Xhat = qBoxMinus(Quat(meas.q), Quat(state.X.q))
         # innovation covariance
         S_KF = meas.cov[:3, :3] + H @ state.P @ H.T
         # optimal kalman gain
@@ -340,8 +339,7 @@ class InertiaEstimator:
         H = np.zeros((3, NUM_STATES_TANGENT))
         H[:3, :3] = np.eye(3)
         # innovation
-        Xhat = np.empty((3, 1))
-        Xhat = qBoxMinus(meas.q, state.X.q)
+        Xhat = qBoxMinus(Quat(meas.q), Quat(state.X.q))
         # innovation covariance
         S_KF = meas.cov[:3, :3] + H @ state.P @ H.T
         # optimal kalman gain
@@ -372,9 +370,9 @@ class InertiaEstimator:
         diffX = np.empty((NUM_STATES_TANGENT, L))
         for i in range(L):
             diffX[:, i] = sigmaPoints[i].boxminus(state.X)
-        S_UKF = diffZ @ np.diag(self._consts.Wc) @ diffZ.T + meas.cov[3:6, 3:6]
+        S_UKF = diffZ @ np.diag(self._consts.Wc.squeeze()) @ diffZ.T + meas.cov[3:6, 3:6]
         # kalman gain
-        Pcross = diffX @ np.diag(self._consts.Wc) @ diffZ.T
+        Pcross = diffX @ np.diag(self._consts.Wc.squeeze()) @ diffZ.T
         K_UKF = Pcross @ inv(S_UKF)
         # updated covariance estimate (a posteriori)
         state.P = state.P - K_UKF @ S_UKF @ K_UKF.T
@@ -389,7 +387,6 @@ class InertiaEstimator:
         H_P[:3, 9:12] = np.eye(3)
         H_P[:3, 27:30] = np.eye(3)
         # innovation
-        Xhat = np.empty((3, 1))
         Xhat = meas.Omega - (state.X.Omega + state.X.b_Omega)
         # innovation covariance
         S_KF = H_P @ state.P @ H_P.T + self._consts.RImu[3:6, 3:6]
@@ -476,9 +473,9 @@ class InertiaEstimator:
         for i in range(L):
             diffX[:, i] = sigmaPoints[i].boxminus(state.X)
 
-        S_UKF = diffZ @ np.diag(self._consts.Wc) @ diffZ.T + self._consts.RImu[:3, :3]
+        S_UKF = diffZ @ np.diag(self._consts.Wc.squeeze()) @ diffZ.T + self._consts.RImu[:3, :3]
         # kalman gain
-        Pcross = diffX @ np.diag(self._consts.Wc) @ diffZ.T
+        Pcross = diffX @ np.diag(self._consts.Wc.squeeze()) @ diffZ.T
         K_UKF = Pcross @ inv(S_UKF)
         # updated covariance estimate (a posteriori)
         state.P = state.P - K_UKF @ S_UKF @ K_UKF.T
@@ -588,6 +585,7 @@ class InertiaEstimator:
                 self._inputList.get()
                 self._inputList.task_done()
             self._init_vars.rpmInitialized = True
+            rospy.loginfo('RPM initialized')
             self._init_vars.t = msg.header.stamp
             # check whether ready to initialize or not
             self._init_vars.readyToInitialize = self._init_vars.rpmInitialized and \
@@ -614,6 +612,8 @@ class InertiaEstimator:
             self._init_vars.P0[:3, :3] = meas_pose.cov[:3, :3]
             self._init_vars.P0[3:6, 3:6] = meas_pose.cov[3:6, 3:6]
             self._init_vars.poseInitialized = True
+            rospy.loginfo('Pose initialized')
+
             # check whether ready to initialize or not
             self._init_vars.readyToInitialize = self._init_vars.rpmInitialized and \
                                                 self._init_vars.imuInitialized and \
@@ -638,6 +638,7 @@ class InertiaEstimator:
             self._init_vars.Omega = meas.Omega
             self._init_vars.P0[9:12, 9:12] = self._consts.RImu[3:6, 3:6]
             self._init_vars.imuInitialized = True
+            rospy.loginfo('Imu initialized')
             # check whether ready to initialize
             self._init_vars.readyToInitialize = self._init_vars.rpmInitialized and \
                                                 self._init_vars.imuInitialized and \
@@ -663,14 +664,14 @@ class InertiaEstimator:
                                                     msg.pose.pose.position.y,
                                                     msg.pose.pose.position.z])
         # read attitude
-        meas_pose.q = self._consts.q_RB * Quat([msg.pose.pose.orientation.w,
+        meas_pose.q = self._consts.q_RB * Quat(msg.pose.pose.orientation.w,
                                                 msg.pose.pose.orientation.x,
                                                 msg.pose.pose.orientation.y,
-                                                msg.pose.pose.orientation.z]).normalized() * self._consts.q_RB.inverse()
+                                                msg.pose.pose.orientation.z).normalized() * self._consts.q_RB.inverse()
 
         # rotate s.t. z is up instead of down
         covPose = np.empty((6, 6))
-        getCovInMsg(msg.pose.covariance, covPose)
+        getCovInMsg(np.fromiter(msg.pose.covariance, dtype=float), covPose)
         covPose = self._consts.R_BP_6D @ covPose @ self._consts.R_BP_6D.T
         meas_pose.cov = covPose
 
@@ -701,17 +702,17 @@ class InertiaEstimator:
         msg.Omega = vec2msg(estimate.X.Omega)
         # set inertia states
         msg.m = estimate.X.m
-        msg.I_tensor = vec2msg(estimate.X.I_tensor.diagonal())
+        msg.I = vec2msg(estimate.X.I_tensor.diagonal())
         msg.r_BM = vec2msg(estimate.X.r_BM)
         # set geometric states
         msg.r_BP = vec2msg(estimate.X.r_BP)
-        msg.r_BI.x = estimate.X.r_BI(0)
-        msg.r_BI.y = estimate.X.r_BI(1)
+        msg.r_BI.x = estimate.X.r_BI[0]
+        msg.r_BI.y = estimate.X.r_BI[1]
         # set biases states
         msg.b_a = vec2msg(estimate.X.b_a)
         msg.b_Omega = vec2msg(estimate.X.b_Omega)
         # set covariance matrix
         for row in range(NUM_STATES_TANGENT):
-            msg.covariance[row] = estimate.P(row, row)
+            msg.covariance[row] = estimate.P[row, row]
         # publish
         self._pub_estimates.publish(msg)

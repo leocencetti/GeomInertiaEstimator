@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from functools import singledispatchmethod
+from math import sqrt
+from numbers import Number
 
 import numpy as np
 import rospy
@@ -12,6 +13,8 @@ NUM_MEAS_IMU = 6
 NUM_SIGMAS = 2 * NUM_STATES_TANGENT + 1
 RT_PI = 3.14159265358979323846
 RT_PIF = 3.1415927
+
+from scipy.spatial.transform import Rotation
 
 
 # structs/classes to cleanly save sates, inputs, measurements, and initialization values
@@ -79,7 +82,7 @@ class State:
         self.b_a += delta[24, 27]
         self.b_Omega += delta[27, 30]
 
-    def boxminus(self, other: State):
+    def boxminus(self, other):
         # calculating the delta (lying on the tangent space of the state space) of two state
         delta = np.empty([NUM_STATES_TANGENT, 1])
         # delta on SO(3)
@@ -128,24 +131,47 @@ class MeasImu:
     Omega = np.empty([3, 1])
 
 
+@dataclass
 class Quat:
-    @singledispatchmethod
-    def __init__(self, *args, **kwargs):
-        return NotImplemented
+    w: float
+    x: float
+    y: float
+    z: float
 
-    @__init__.register
-    def _(self, w: float, x: float, y: float, z: float):
+    def __init__(self, *args):
+        if len(args) == 1:
+            if type(args[0]) == np.ndarray:
+                if args[0].size == 4:
+                    self._from_vec(args[0])
+                    return
+                elif args[0].size == 9:
+                    self._from_mat(args[0])
+                    return
+            elif type(args[0]) == self.__class__:
+                self._from_quat(args[0])
+                return
+        elif len(args) == 4:
+            self._from_comp(*args)
+            return
+        raise ValueError
+
+    def _from_comp(self, w: float, x: float, y: float, z: float):
         self.w: float = w
         self.x: float = x
         self.y: float = y
         self.z: float = z
 
-    @__init__.register
-    def _(self, q: Quat):
+    def _from_quat(self, q):
         self.w = q.w
         self.x = q.x
         self.y = q.y
         self.z = q.z
+
+    def _from_vec(self, vec: np.ndarray):
+        self.w, self.x, self.y, self.z = tuple(vec.tolist())
+
+    def _from_mat(self, mat: np.ndarray):
+        self.w, self.x, self.y, self.z = tuple(Rotation.from_matrix(mat).as_quat())
 
     def __str__(self):
         return '{} {} {} {}'.format(self.w, self.x, self.y, self.z)
@@ -153,20 +179,17 @@ class Quat:
     def inverse(self):
         return Quat(self.w, -self.x, -self.y, -self.z)
 
-    @singledispatchmethod
     def __mul__(self, other):
-        return NotImplemented
+        if type(other) == self.__class__:
+            return Quat(-other.x * self.x - other.y * self.y - other.z * self.z + other.w * self.w,
+                        other.x * self.w + other.y * self.z - other.z * self.y + other.w * self.x,
+                        -other.x * self.z + other.y * self.w + other.z * self.x + other.w * self.y,
+                        other.x * self.y - other.y * self.x + other.z * self.w + other.w * self.z)
+        elif type(other) == Number:
+            return Quat(other * self.w, other * self.x, other * self.y, other * self.z)
 
-    @__mul__.register
-    def _(self, other: Quat):
-        return Quat(-other.x * self.x - other.y * self.y - other.z * self.z + other.w * self.w,
-                    other.x * self.w + other.y * self.z - other.z * self.y + other.w * self.x,
-                    -other.x * self.z + other.y * self.w + other.z * self.x + other.w * self.y,
-                    other.x * self.y - other.y * self.x + other.z * self.w + other.w * self.z)
-
-    @__mul__.register
-    def _(self, other: Number):
-        return Quat(other * self.w, other * self.x, other * self.y, other * self.z)
+    def __truediv__(self, other):
+        return Quat(self.w / other, self.x / other, self.y / other, self.z / other)
 
     def normalized(self):
         return self / sqrt(self.w ** 2 + self.x ** 2 + self.y ** 2 + self.z ** 2)

@@ -54,7 +54,8 @@
 # Return Type  : void
 #
 import numpy as np
-from numpy import sin, cos, atan2, sign, sqrt
+from numpy import sin, cos, sign, sqrt
+from math import atan2
 
 
 def calc_EKF_F_optimized(qLx: float, qLy: float, qLz: float,
